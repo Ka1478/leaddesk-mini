@@ -24,7 +24,7 @@ app.use(cookieParser());
 
 app.use(
   cors({
-    origin: process.env.NODE_ENV === 'production' ? true : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: true,
     credentials: true,
   })
 );
@@ -57,7 +57,6 @@ app.get('*', (req, res) => {
         <body style="font-family: sans-serif; padding: 2rem; background: #0f172a; color: #f8fafc;">
           <h1>🚀 LeadDesk Mini API Server</h1>
           <p>Status: <strong>Online & Running</strong></p>
-          <p>Please run the React frontend dev server: <code>npm run client</code> or build it with <code>npm run build</code>.</p>
         </body>
         </html>
       `);
@@ -81,7 +80,6 @@ async function startServer() {
       console.log('Connected to Memory MongoDB database at:', connectionUri);
     }
 
-    // Auto-seed default admin if no user exists
     const userCount = await User.countDocuments();
     if (userCount === 0) {
       const salt = await bcrypt.genSalt(10);
@@ -94,7 +92,6 @@ async function startServer() {
       console.log('⚡ Default admin created: admin@leaddesk.com / AdminPass123!');
     }
 
-    // Restore persistent tickets from disk if available
     if (fs.existsSync(leadsStorePath)) {
       try {
         const fileData = fs.readFileSync(leadsStorePath, 'utf8');
@@ -108,7 +105,6 @@ async function startServer() {
         console.error('Failed to load past tickets from disk:', err);
       }
     } else {
-      // Seed initial sample leads if no past store exists
       const leadCount = await Lead.countDocuments();
       if (leadCount === 0) {
         const initialLeads = [
@@ -146,16 +142,16 @@ async function startServer() {
       }
     }
 
-    app.listen(PORT, () => {
-      console.log(`\n==================================================`);
-      console.log(`🚀 LeadDesk Mini Server running on http://localhost:${PORT}`);
-      console.log(`👉 API Base: http://localhost:${PORT}/api`);
-      console.log(`==================================================\n`);
-    });
+    if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+      app.listen(PORT, () => {
+        console.log(`🚀 LeadDesk Mini Server running on http://localhost:${PORT}`);
+      });
+    }
   } catch (error) {
     console.error('Failed to start server:', error);
-    process.exit(1);
   }
 }
 
 startServer();
+
+module.exports = app;
