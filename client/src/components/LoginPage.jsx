@@ -25,7 +25,11 @@ export default function LoginPage({ onLogin, setToast, navigate }) {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (e) {}
 
       if (!res.ok) {
         throw new Error(data.message || 'Authentication failed');
@@ -62,7 +66,6 @@ export default function LoginPage({ onLogin, setToast, navigate }) {
           overflow: 'hidden',
         }}
       >
-        {/* Top ambient glow bar */}
         <div 
           style={{
             position: 'absolute',
@@ -180,6 +183,7 @@ export default function LoginPage({ onLogin, setToast, navigate }) {
               <input
                 type="email"
                 id="admin-email"
+                autoComplete="username"
                 placeholder="admin@leaddesk.com"
                 style={{
                   width: '100%',
@@ -207,6 +211,7 @@ export default function LoginPage({ onLogin, setToast, navigate }) {
               <input
                 type="password"
                 id="admin-password"
+                autoComplete="current-password"
                 placeholder="••••••••••••"
                 style={{
                   width: '100%',
