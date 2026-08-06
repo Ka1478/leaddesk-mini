@@ -5,7 +5,7 @@ const Lead = require('../models/Lead');
 const { protect } = require('../middleware/auth');
 const { validateLeadSubmission } = require('../middleware/validate');
 
-// In-memory fallback store for serverless environments when DB is offline/connecting
+// In-memory fallback store
 let fallbackLeads = [
   {
     _id: '6a737001',
@@ -39,17 +39,27 @@ let fallbackLeads = [
   },
 ];
 
+// Helper to generate next unique ticket number
+async function generateTicketNo() {
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const count = await Lead.countDocuments();
+      return `TK-${1000 + count + 1}`;
+    } catch (e) {}
+  }
+  return `TK-${1000 + fallbackLeads.length + 1}`;
+}
+
 // @route   POST /api/leads
 // @desc    Capture new lead (Public)
 // @access  Public
 router.post('/', validateLeadSubmission, async (req, res) => {
   try {
     const { name, email, budget, message } = req.body;
+    const ticketNo = await generateTicketNo();
 
     if (mongoose.connection.readyState === 1) {
       try {
-        const count = await Lead.countDocuments();
-        const ticketNo = `TK-${1000 + count + 1}`;
         const lead = await Lead.create({
           ticketNo,
           name: name.trim(),
@@ -64,15 +74,13 @@ router.post('/', validateLeadSubmission, async (req, res) => {
           data: lead,
         });
       } catch (dbErr) {
-        console.error('Mongoose create error, falling back to memory store:', dbErr.message);
+        console.error('Mongoose DB insert error, using fallback:', dbErr.message);
       }
     }
 
-    // Fallback store handling (guarantees 100% success on serverless)
-    const nextNum = 1000 + fallbackLeads.length + 1;
     const newLead = {
       _id: Date.now().toString(),
-      ticketNo: `TK-${nextNum}`,
+      ticketNo,
       name: name.trim(),
       email: email.toLowerCase().trim(),
       budget: budget.trim(),
@@ -134,11 +142,10 @@ router.get('/', protect, async (req, res) => {
           data: dbLeads,
         });
       } catch (dbErr) {
-        console.error('Mongoose fetch error, using fallback store:', dbErr.message);
+        console.error('Mongoose fetch error, using fallback:', dbErr.message);
       }
     }
 
-    // Fallback search & filter handling
     let filtered = [...fallbackLeads];
 
     if (status && status !== 'All') {

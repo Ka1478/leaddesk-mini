@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
-const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
 const authRoutes = require('./routes/auth');
@@ -13,10 +12,9 @@ const Lead = require('./models/Lead');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGODB_URI;
 
-const dataDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, '../data');
-const leadsStorePath = path.join(dataDir, 'leads_store.json');
+// Cloud MongoDB Atlas URI for multi-tenant, multi-instance serverless persistence
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://leaddesk_admin:LeadDesk2026Pass@cluster0.p7x7y.mongodb.net/leaddesk?retryWrites=true&w=majority';
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -29,39 +27,45 @@ app.use(
   })
 );
 
-let isDbInitialized = false;
+// Connect Mongoose to Cloud MongoDB Database
+let isConnecting = false;
+async function connectCloudDB() {
+  if (mongoose.connection.readyState === 1) return;
+  if (isConnecting) return;
+  isConnecting = true;
 
-// Ultra-fast Serverless DB Init (Zero-delay execution)
-async function initDatabase() {
-  if (isDbInitialized) return;
-  isDbInitialized = true;
+  try {
+    await mongoose.connect(MONGO_URI, {
+      serverSelectionTimeoutMS: 4000,
+    });
+    console.log('Connected to Cloud MongoDB Atlas database successfully.');
 
-  // Only attempt Mongoose connection if explicit MONGODB_URI environment variable is provided
-  if (MONGO_URI) {
-    try {
-      await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 2000 });
-      console.log('Connected to MongoDB at:', MONGO_URI);
-
-      const userCount = await User.countDocuments();
-      if (userCount === 0) {
-        const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash('AdminPass123!', salt);
-        await User.create({
-          email: 'admin@leaddesk.com',
-          passwordHash,
-          role: 'admin',
-        });
-      }
-    } catch (err) {
-      console.error('Remote MongoDB connection error:', err.message);
+    // Seed default admin account in Cloud DB if not present
+    const userCount = await User.countDocuments();
+    if (userCount === 0) {
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash('AdminPass123!', salt);
+      await User.create({
+        email: 'admin@leaddesk.com',
+        passwordHash,
+        role: 'admin',
+      });
+      console.log('⚡ Default admin created in Cloud DB: admin@leaddesk.com / AdminPass123!');
     }
+  } catch (err) {
+    console.error('Cloud MongoDB connection notice:', err.message);
+  } finally {
+    isConnecting = false;
   }
 }
 
-// Fast synchronous middleware
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api') && !isDbInitialized) {
-    initDatabase().catch(console.error);
+// Immediately trigger DB connection
+connectCloudDB();
+
+// Middleware to ensure DB connection on serverless requests
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    await connectCloudDB();
   }
   next();
 });
@@ -75,7 +79,7 @@ app.get('/api/health', (req, res) => {
     status: 'online',
     timestamp: new Date(),
     service: 'LeadDesk Mini API',
-    speed: 'ultra-fast',
+    dbStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
   });
 });
 
