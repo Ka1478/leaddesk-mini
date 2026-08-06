@@ -6,7 +6,7 @@ const Lead = require('../models/Lead');
 const { protect } = require('../middleware/auth');
 const { validateLeadSubmission } = require('../middleware/validate');
 
-const dataDir = path.join(__dirname, '../../data');
+const dataDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, '../../data');
 const leadsStorePath = path.join(dataDir, 'leads_store.json');
 
 // Helper to sync database leads to persistent disk file
@@ -46,7 +46,6 @@ router.post('/', validateLeadSubmission, async (req, res) => {
       status: 'New',
     });
 
-    // Sync to disk so lead persists across server restarts
     await syncLeadsToDisk();
 
     res.status(201).json({
@@ -151,7 +150,6 @@ router.patch('/:id/status', protect, async (req, res) => {
       });
     }
 
-    // Sync changes to disk
     await syncLeadsToDisk();
 
     res.json({
@@ -179,7 +177,6 @@ router.delete('/:id', protect, async (req, res) => {
       });
     }
 
-    // Sync deletion to disk
     await syncLeadsToDisk();
 
     res.json({
