@@ -13,8 +13,8 @@ const Lead = require('./models/Lead');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Cloud MongoDB Atlas URI for multi-tenant, multi-instance serverless persistence
-const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://leaddesk_admin:LeadDesk2026Pass@cluster0.p7x7y.mongodb.net/leaddesk?retryWrites=true&w=majority';
+// Read MongoDB connection string from environment variables
+const MONGO_URI = process.env.MONGODB_URI;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -27,9 +27,10 @@ app.use(
   })
 );
 
-// Connect Mongoose to Cloud MongoDB Database
+// Connect Mongoose to MongoDB Database if environment variable is present
 let isConnecting = false;
 async function connectCloudDB() {
+  if (!MONGO_URI) return;
   if (mongoose.connection.readyState === 1) return;
   if (isConnecting) return;
   isConnecting = true;
@@ -38,9 +39,9 @@ async function connectCloudDB() {
     await mongoose.connect(MONGO_URI, {
       serverSelectionTimeoutMS: 4000,
     });
-    console.log('Connected to Cloud MongoDB Atlas database successfully.');
+    console.log('Connected to MongoDB database successfully.');
 
-    // Seed default admin account in Cloud DB if not present
+    // Seed default admin account in DB if not present
     const userCount = await User.countDocuments();
     if (userCount === 0) {
       const salt = await bcrypt.genSalt(10);
@@ -50,21 +51,21 @@ async function connectCloudDB() {
         passwordHash,
         role: 'admin',
       });
-      console.log('⚡ Default admin created in Cloud DB: admin@leaddesk.com / AdminPass123!');
+      console.log('⚡ Default admin created: admin@leaddesk.com / AdminPass123!');
     }
   } catch (err) {
-    console.error('Cloud MongoDB connection notice:', err.message);
+    console.error('MongoDB connection notice:', err.message);
   } finally {
     isConnecting = false;
   }
 }
 
-// Immediately trigger DB connection
+// Trigger DB connection
 connectCloudDB();
 
 // Middleware to ensure DB connection on serverless requests
 app.use(async (req, res, next) => {
-  if (req.path.startsWith('/api')) {
+  if (req.path.startsWith('/api') && MONGO_URI) {
     await connectCloudDB();
   }
   next();
