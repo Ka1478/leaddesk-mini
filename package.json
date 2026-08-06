@@ -8,7 +8,7 @@
     "seed": "node server/seed.js",
     "server": "node server/index.js",
     "client": "cd client && npm run dev",
-    "build": "npx vite build client",
+    "build": "vite build client",
     "start": "node server/index.js",
     "dev": "node server/index.js"
   },
