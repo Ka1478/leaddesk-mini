@@ -5,10 +5,10 @@ const Lead = require('../models/Lead');
 const { protect } = require('../middleware/auth');
 const { validateLeadSubmission } = require('../middleware/validate');
 
-// In-memory fallback store
+// In-memory fallback store with valid MongoDB-compatible ObjectIds
 let fallbackLeads = [
   {
-    _id: '6a737001',
+    _id: '65f1a2b3c4d5e6f7a8b9c0d1',
     ticketNo: 'TK-1001',
     name: 'Sarah Connor',
     email: 'sarah.connor@cyberdyne.io',
@@ -18,7 +18,7 @@ let fallbackLeads = [
     createdAt: new Date('2026-08-05T10:00:00Z'),
   },
   {
-    _id: '6a737002',
+    _id: '65f1a2b3c4d5e6f7a8b9c0d2',
     ticketNo: 'TK-1002',
     name: 'Marcus Vance',
     email: 'marcus.v@apextech.com',
@@ -28,7 +28,7 @@ let fallbackLeads = [
     createdAt: new Date('2026-08-05T11:00:00Z'),
   },
   {
-    _id: '6a737003',
+    _id: '65f1a2b3c4d5e6f7a8b9c0d3',
     ticketNo: 'TK-1003',
     name: 'Elena Rostova',
     email: 'elena@luminardesign.co',
@@ -39,7 +39,6 @@ let fallbackLeads = [
   },
 ];
 
-// Helper to generate next unique ticket number
 async function generateTicketNo() {
   if (mongoose.connection.readyState === 1) {
     try {
@@ -51,8 +50,6 @@ async function generateTicketNo() {
 }
 
 // @route   POST /api/leads
-// @desc    Capture new lead (Public)
-// @access  Public
 router.post('/', validateLeadSubmission, async (req, res) => {
   try {
     const { name, email, budget, message } = req.body;
@@ -79,7 +76,7 @@ router.post('/', validateLeadSubmission, async (req, res) => {
     }
 
     const newLead = {
-      _id: Date.now().toString(),
+      _id: new mongoose.Types.ObjectId().toString(),
       ticketNo,
       name: name.trim(),
       email: email.toLowerCase().trim(),
@@ -106,8 +103,6 @@ router.post('/', validateLeadSubmission, async (req, res) => {
 });
 
 // @route   GET /api/leads
-// @desc    Get all leads with search and filter (Admin only)
-// @access  Private
 router.get('/', protect, async (req, res) => {
   try {
     const { search, status } = req.query;
@@ -187,14 +182,14 @@ router.get('/', protect, async (req, res) => {
 // @route   GET /api/leads/:id
 router.get('/:id', protect, async (req, res) => {
   try {
-    if (mongoose.connection.readyState === 1) {
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(req.params.id)) {
       try {
         const lead = await Lead.findById(req.params.id);
         if (lead) return res.json({ success: true, data: lead });
       } catch (e) {}
     }
 
-    const found = fallbackLeads.find((l) => l._id === req.params.id);
+    const found = fallbackLeads.find((l) => l._id.toString() === req.params.id.toString());
     if (!found) return res.status(404).json({ success: false, message: 'Lead not found' });
     res.json({ success: true, data: found });
   } catch (error) {
@@ -215,7 +210,7 @@ router.patch('/:id/status', protect, async (req, res) => {
       });
     }
 
-    if (mongoose.connection.readyState === 1) {
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(req.params.id)) {
       try {
         const lead = await Lead.findByIdAndUpdate(
           req.params.id,
@@ -232,7 +227,7 @@ router.patch('/:id/status', protect, async (req, res) => {
       } catch (e) {}
     }
 
-    const idx = fallbackLeads.findIndex((l) => l._id === req.params.id);
+    const idx = fallbackLeads.findIndex((l) => l._id.toString() === req.params.id.toString());
     if (idx !== -1) {
       fallbackLeads[idx].status = status;
       return res.json({
@@ -255,7 +250,7 @@ router.patch('/:id/status', protect, async (req, res) => {
 // @route   DELETE /api/leads/:id
 router.delete('/:id', protect, async (req, res) => {
   try {
-    if (mongoose.connection.readyState === 1) {
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(req.params.id)) {
       try {
         const lead = await Lead.findByIdAndDelete(req.params.id);
         if (lead) {
@@ -265,7 +260,7 @@ router.delete('/:id', protect, async (req, res) => {
     }
 
     const initialLen = fallbackLeads.length;
-    fallbackLeads = fallbackLeads.filter((l) => l._id !== req.params.id);
+    fallbackLeads = fallbackLeads.filter((l) => l._id.toString() !== req.params.id.toString());
 
     if (fallbackLeads.length < initialLen) {
       return res.json({ success: true, message: 'Lead deleted successfully' });

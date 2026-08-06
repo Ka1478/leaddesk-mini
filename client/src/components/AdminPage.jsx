@@ -15,6 +15,14 @@ export default function AdminPage({ user, setToast, token }) {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState(null);
 
+  const recalculateMetrics = (leadList) => {
+    const totalLeads = leadList.length;
+    const newLeads = leadList.filter((l) => l.status === 'New').length;
+    const contactedLeads = leadList.filter((l) => l.status === 'Contacted').length;
+    const closedLeads = leadList.filter((l) => l.status === 'Closed').length;
+    setMetrics({ totalLeads, newLeads, contactedLeads, closedLeads });
+  };
+
   const fetchLeads = async () => {
     if (!token) {
       setIsLoading(false);
@@ -46,9 +54,12 @@ export default function AdminPage({ user, setToast, token }) {
         throw new Error(data.message || `Failed to fetch leads (${res.status})`);
       }
 
-      setLeads(data.data || []);
+      const fetchedData = data.data || [];
+      setLeads(fetchedData);
       if (data.metrics) {
         setMetrics(data.metrics);
+      } else {
+        recalculateMetrics(fetchedData);
       }
     } catch (err) {
       setToast({ type: 'error', text: err.message || 'Error loading leads.' });
@@ -66,6 +77,15 @@ export default function AdminPage({ user, setToast, token }) {
   }, [search, statusFilter, token]);
 
   const handleStatusChange = async (leadId, newStatus) => {
+    // Immediate Optimistic UI Update
+    setLeads((prevLeads) => {
+      const updated = prevLeads.map((lead) =>
+        lead._id === leadId ? { ...lead, status: newStatus } : lead
+      );
+      recalculateMetrics(updated);
+      return updated;
+    });
+
     try {
       const headers = {
         'Content-Type': 'application/json',
@@ -89,14 +109,21 @@ export default function AdminPage({ user, setToast, token }) {
       }
 
       setToast({ type: 'success', text: `Status updated to ${newStatus}` });
-      fetchLeads();
     } catch (err) {
       setToast({ type: 'error', text: err.message || 'Status update failed.' });
+      fetchLeads(); // Revert on error
     }
   };
 
   const handleDelete = async (leadId) => {
     if (!window.confirm('Delete this lead record permanently?')) return;
+
+    // Optimistic UI deletion
+    setLeads((prevLeads) => {
+      const updated = prevLeads.filter((l) => l._id !== leadId);
+      recalculateMetrics(updated);
+      return updated;
+    });
 
     try {
       const headers = {
@@ -119,9 +146,9 @@ export default function AdminPage({ user, setToast, token }) {
       }
 
       setToast({ type: 'success', text: 'Lead deleted successfully' });
-      fetchLeads();
     } catch (err) {
       setToast({ type: 'error', text: err.message || 'Delete failed.' });
+      fetchLeads(); // Revert on error
     }
   };
 
