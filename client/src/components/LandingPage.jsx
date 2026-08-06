@@ -65,6 +65,17 @@ export default function LandingPage({ setToast }) {
     }
   };
 
+  const saveLocalTicket = (ticketData) => {
+    try {
+      const stored = localStorage.getItem('leaddesk_client_tickets');
+      const existing = stored ? JSON.parse(stored) : [];
+      existing.unshift(ticketData);
+      localStorage.setItem('leaddesk_client_tickets', JSON.stringify(existing));
+    } catch (e) {
+      console.error('LocalStorage write error:', e);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSuccess(false);
@@ -96,6 +107,10 @@ export default function LandingPage({ setToast }) {
           setErrors(data.errors);
         }
         throw new Error(data.message || `Server error (${response.status})`);
+      }
+
+      if (data.data) {
+        saveLocalTicket(data.data);
       }
 
       setIsSuccess(true);

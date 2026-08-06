@@ -1,12 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 const Lead = require('../models/Lead');
 const { protect } = require('../middleware/auth');
 const { validateLeadSubmission } = require('../middleware/validate');
 
-// In-memory fallback store with valid MongoDB-compatible ObjectIds
-let fallbackLeads = [
+const storePath = process.env.VERCEL
+  ? '/tmp/leads_store.json'
+  : path.join(__dirname, '../../data/leads_store.json');
+
+const initialLeads = [
   {
     _id: '65f1a2b3c4d5e6f7a8b9c0d1',
     ticketNo: 'TK-1001',
@@ -39,6 +44,31 @@ let fallbackLeads = [
   },
 ];
 
+function readDiskLeads() {
+  try {
+    if (fs.existsSync(storePath)) {
+      const data = fs.readFileSync(storePath, 'utf8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return [...initialLeads];
+}
+
+function writeDiskLeads(leads) {
+  try {
+    const dir = path.dirname(storePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(storePath, JSON.stringify(leads, null, 2));
+  } catch (e) {
+    console.error('Disk write error:', e.message);
+  }
+}
+
 async function generateTicketNo() {
   if (mongoose.connection.readyState === 1) {
     try {
@@ -46,7 +76,8 @@ async function generateTicketNo() {
       return `TK-${1000 + count + 1}`;
     } catch (e) {}
   }
-  return `TK-${1000 + fallbackLeads.length + 1}`;
+  const disk = readDiskLeads();
+  return `TK-${1000 + disk.length + 1}`;
 }
 
 // @route   POST /api/leads
@@ -71,7 +102,7 @@ router.post('/', validateLeadSubmission, async (req, res) => {
           data: lead,
         });
       } catch (dbErr) {
-        console.error('Mongoose DB insert error, using fallback:', dbErr.message);
+        console.error('Mongoose DB insert error, using disk fallback:', dbErr.message);
       }
     }
 
@@ -83,10 +114,12 @@ router.post('/', validateLeadSubmission, async (req, res) => {
       budget: budget.trim(),
       message: message.trim(),
       status: 'New',
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
     };
 
-    fallbackLeads.unshift(newLead);
+    const currentLeads = readDiskLeads();
+    currentLeads.unshift(newLead);
+    writeDiskLeads(currentLeads);
 
     return res.status(201).json({
       success: true,
@@ -137,11 +170,12 @@ router.get('/', protect, async (req, res) => {
           data: dbLeads,
         });
       } catch (dbErr) {
-        console.error('Mongoose fetch error, using fallback:', dbErr.message);
+        console.error('Mongoose fetch error, using disk fallback:', dbErr.message);
       }
     }
 
-    let filtered = [...fallbackLeads];
+    const diskLeads = readDiskLeads();
+    let filtered = [...diskLeads];
 
     if (status && status !== 'All') {
       filtered = filtered.filter((l) => l.status === status);
@@ -159,10 +193,10 @@ router.get('/', protect, async (req, res) => {
       );
     }
 
-    const totalLeads = fallbackLeads.length;
-    const newLeads = fallbackLeads.filter((l) => l.status === 'New').length;
-    const contactedLeads = fallbackLeads.filter((l) => l.status === 'Contacted').length;
-    const closedLeads = fallbackLeads.filter((l) => l.status === 'Closed').length;
+    const totalLeads = diskLeads.length;
+    const newLeads = diskLeads.filter((l) => l.status === 'New').length;
+    const contactedLeads = diskLeads.filter((l) => l.status === 'Contacted').length;
+    const closedLeads = diskLeads.filter((l) => l.status === 'Closed').length;
 
     res.json({
       success: true,
@@ -176,24 +210,6 @@ router.get('/', protect, async (req, res) => {
       success: false,
       message: 'Server error while fetching leads',
     });
-  }
-});
-
-// @route   GET /api/leads/:id
-router.get('/:id', protect, async (req, res) => {
-  try {
-    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(req.params.id)) {
-      try {
-        const lead = await Lead.findById(req.params.id);
-        if (lead) return res.json({ success: true, data: lead });
-      } catch (e) {}
-    }
-
-    const found = fallbackLeads.find((l) => l._id.toString() === req.params.id.toString());
-    if (!found) return res.status(404).json({ success: false, message: 'Lead not found' });
-    res.json({ success: true, data: found });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Error retrieving lead' });
   }
 });
 
@@ -227,13 +243,15 @@ router.patch('/:id/status', protect, async (req, res) => {
       } catch (e) {}
     }
 
-    const idx = fallbackLeads.findIndex((l) => l._id.toString() === req.params.id.toString());
+    const currentLeads = readDiskLeads();
+    const idx = currentLeads.findIndex((l) => l._id.toString() === req.params.id.toString());
     if (idx !== -1) {
-      fallbackLeads[idx].status = status;
+      currentLeads[idx].status = status;
+      writeDiskLeads(currentLeads);
       return res.json({
         success: true,
         message: `Lead status updated to ${status}`,
-        data: fallbackLeads[idx],
+        data: currentLeads[idx],
       });
     }
 
@@ -259,10 +277,11 @@ router.delete('/:id', protect, async (req, res) => {
       } catch (e) {}
     }
 
-    const initialLen = fallbackLeads.length;
-    fallbackLeads = fallbackLeads.filter((l) => l._id.toString() !== req.params.id.toString());
+    const currentLeads = readDiskLeads();
+    const updatedLeads = currentLeads.filter((l) => l._id.toString() !== req.params.id.toString());
 
-    if (fallbackLeads.length < initialLen) {
+    if (updatedLeads.length < currentLeads.length) {
+      writeDiskLeads(updatedLeads);
       return res.json({ success: true, message: 'Lead deleted successfully' });
     }
 

@@ -15,6 +15,33 @@ export default function AdminPage({ user, setToast, token }) {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState(null);
 
+  const getLocalTickets = () => {
+    try {
+      const stored = localStorage.getItem('leaddesk_client_tickets');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const mergeWithLocalTickets = (apiLeads) => {
+    const local = getLocalTickets();
+    if (local.length === 0) return apiLeads;
+
+    const merged = [...apiLeads];
+    local.forEach((localTicket) => {
+      const exists = merged.some(
+        (m) =>
+          (localTicket.ticketNo && m.ticketNo === localTicket.ticketNo) ||
+          m._id === localTicket._id
+      );
+      if (!exists) {
+        merged.unshift(localTicket);
+      }
+    });
+    return merged;
+  };
+
   const recalculateMetrics = (leadList) => {
     const totalLeads = leadList.length;
     const newLeads = leadList.filter((l) => l.status === 'New').length;
@@ -55,14 +82,14 @@ export default function AdminPage({ user, setToast, token }) {
       }
 
       const fetchedData = data.data || [];
-      setLeads(fetchedData);
-      if (data.metrics) {
-        setMetrics(data.metrics);
-      } else {
-        recalculateMetrics(fetchedData);
-      }
+      const combined = mergeWithLocalTickets(fetchedData);
+      setLeads(combined);
+      recalculateMetrics(combined);
     } catch (err) {
       setToast({ type: 'error', text: err.message || 'Error loading leads.' });
+      const localOnly = mergeWithLocalTickets([]);
+      setLeads(localOnly);
+      recalculateMetrics(localOnly);
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +112,16 @@ export default function AdminPage({ user, setToast, token }) {
       recalculateMetrics(updated);
       return updated;
     });
+
+    // Also update local storage ticket status if present
+    try {
+      const local = getLocalTickets();
+      const idx = local.findIndex((l) => l._id === leadId);
+      if (idx !== -1) {
+        local[idx].status = newStatus;
+        localStorage.setItem('leaddesk_client_tickets', JSON.stringify(local));
+      }
+    } catch (e) {}
 
     try {
       const headers = {
@@ -124,6 +161,13 @@ export default function AdminPage({ user, setToast, token }) {
       recalculateMetrics(updated);
       return updated;
     });
+
+    // Also delete from local storage if present
+    try {
+      const local = getLocalTickets();
+      const filtered = local.filter((l) => l._id !== leadId);
+      localStorage.setItem('leaddesk_client_tickets', JSON.stringify(filtered));
+    } catch (e) {}
 
     try {
       const headers = {
