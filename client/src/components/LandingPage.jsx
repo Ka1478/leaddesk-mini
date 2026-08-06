@@ -83,13 +83,19 @@ export default function LandingPage({ setToast }) {
         body: JSON.stringify(formData),
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (parseErr) {
+        console.error('Non-JSON response:', responseText);
+      }
 
       if (!response.ok) {
         if (data.errors) {
           setErrors(data.errors);
         }
-        throw new Error(data.message || 'Failed to submit ticket');
+        throw new Error(data.message || `Server error (${response.status})`);
       }
 
       setIsSuccess(true);
@@ -215,7 +221,7 @@ export default function LandingPage({ setToast }) {
                 {errors.email && <div className="ticket-error">{errors.email}</div>}
               </div>
 
-              {/* Budget Range (Manual text input + quick preset chips) */}
+              {/* Budget Range */}
               <div className="ticket-group">
                 <label className="ticket-label" htmlFor="budget">
                   Budget range
@@ -230,7 +236,6 @@ export default function LandingPage({ setToast }) {
                   onChange={handleInputChange}
                 />
                 
-                {/* Preset Chips */}
                 <div className="budget-presets">
                   {presetBudgets.map((preset) => (
                     <button

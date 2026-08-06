@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Download, Eye, Trash2, X, Ticket } from 'lucide-react';
+import { Search, Download, Eye, Trash2, X } from 'lucide-react';
 
 export default function AdminPage({ user, setToast, token }) {
   const [leads, setLeads] = useState([]);
@@ -31,10 +31,16 @@ export default function AdminPage({ user, setToast, token }) {
         headers,
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (parseErr) {
+        console.error('Non-JSON response:', responseText);
+      }
 
       if (!res.ok) {
-        throw new Error(data.message || 'Failed to fetch leads');
+        throw new Error(data.message || `Failed to fetch leads (${res.status})`);
       }
 
       setLeads(data.data || []);
@@ -65,7 +71,11 @@ export default function AdminPage({ user, setToast, token }) {
         body: JSON.stringify({ status: newStatus }),
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (e) {}
 
       if (!res.ok) {
         throw new Error(data.message || 'Failed to update lead status');
@@ -92,7 +102,11 @@ export default function AdminPage({ user, setToast, token }) {
         headers,
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (e) {}
 
       if (!res.ok) {
         throw new Error(data.message || 'Failed to delete lead');
@@ -361,7 +375,6 @@ export default function AdminPage({ user, setToast, token }) {
               <X size={20} />
             </button>
 
-            {/* Ticket Header Matching Reference Card */}
             <div 
               style={{ 
                 display: 'flex', 
