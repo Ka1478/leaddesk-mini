@@ -16,16 +16,19 @@ export default function AdminPage({ user, setToast, token }) {
   const [selectedLead, setSelectedLead] = useState(null);
 
   const fetchLeads = async () => {
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const queryParams = new URLSearchParams();
       if (search) queryParams.append('search', search);
       if (statusFilter !== 'All') queryParams.append('status', statusFilter);
 
-      const headers = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      const headers = {
+        Authorization: `Bearer ${token}`,
+      };
 
       const res = await fetch(`/api/leads?${queryParams.toString()}`, {
         headers,
@@ -55,15 +58,19 @@ export default function AdminPage({ user, setToast, token }) {
   };
 
   useEffect(() => {
-    fetchLeads();
-  }, [search, statusFilter]);
+    if (token) {
+      fetchLeads();
+    } else {
+      setIsLoading(false);
+    }
+  }, [search, statusFilter, token]);
 
   const handleStatusChange = async (leadId, newStatus) => {
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      };
 
       const res = await fetch(`/api/leads/${leadId}/status`, {
         method: 'PATCH',
@@ -92,10 +99,9 @@ export default function AdminPage({ user, setToast, token }) {
     if (!window.confirm('Delete this lead record permanently?')) return;
 
     try {
-      const headers = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      const headers = {
+        Authorization: `Bearer ${token}`,
+      };
 
       const res = await fetch(`/api/leads/${leadId}`, {
         method: 'DELETE',
